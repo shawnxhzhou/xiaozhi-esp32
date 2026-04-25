@@ -53,6 +53,7 @@
 #define DISPLAY_SPI_SCLK_HZ     (40 * 1000 * 1000)
 
 #define DISPLAY_BACKLIGHT_PIN            GPIO_NUM_38
-#define DISPLAY_BACKLIGHT_OUTPUT_INVERT  false  // BL 高电平点亮
+// 实测 StickS3 的 BL 是低电平点亮（M5 板多数这样），要反过来
+#define DISPLAY_BACKLIGHT_OUTPUT_INVERT  true
 
 #endif // _BOARD_CONFIG_H_
