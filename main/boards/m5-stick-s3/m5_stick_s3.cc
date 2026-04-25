@@ -200,14 +200,31 @@ private:
             app.ToggleChatState();
         });
 
-        // KEY2 (G12)：目前先当音量 +。后续可改成退出 / 红外遥控等
+        // KEY2 (G12)：单击循环 5 档音量（30→50→70→85→100→30...）
+        // 长按：直接调到 100（紧急放大）
         volume_up_button_.OnClick([this]() {
             auto codec = GetAudioCodec();
-            if (codec != nullptr) {
-                int v = codec->output_volume() + 10;
-                if (v > 100) v = 100;
-                codec->SetOutputVolume(v);
+            if (codec == nullptr) return;
+            static const int LEVELS[] = {30, 50, 70, 85, 100};
+            int cur = codec->output_volume();
+            int next = LEVELS[0];  // 默认从最低开始
+            for (int i = 0; i < 5; i++) {
+                if (cur < LEVELS[i]) {
+                    next = LEVELS[i];
+                    break;
+                }
+                if (i == 4) next = LEVELS[0];  // cur==100 → 回到 30
             }
+            codec->SetOutputVolume(next);
+            char msg[32];
+            snprintf(msg, sizeof(msg), "音量 %d%%", next);
+            if (auto d = GetDisplay()) d->ShowNotification(msg, 1500);
+        });
+        volume_up_button_.OnLongPress([this]() {
+            auto codec = GetAudioCodec();
+            if (codec == nullptr) return;
+            codec->SetOutputVolume(100);
+            if (auto d = GetDisplay()) d->ShowNotification("音量 100%", 1500);
         });
     }
 
