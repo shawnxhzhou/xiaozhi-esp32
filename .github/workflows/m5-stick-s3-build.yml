@@ -27,9 +27,15 @@ jobs:
 
       - name: Inject board type
         run: |
+          # StickS3 是 8MB flash + 8MB PSRAM，xiaozhi 默认假设 16MB flash
+          # 这里覆盖 flash size 和分区表为 8MB 版本
           cat > sdkconfig.defaults.m5stick <<EOF
           CONFIG_IDF_TARGET="esp32s3"
           CONFIG_BOARD_TYPE_M5_STICK_S3=y
+          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=n
+          CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+          CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+          CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/v2/8m.csv"
           EOF
           cat sdkconfig.defaults.m5stick
 
