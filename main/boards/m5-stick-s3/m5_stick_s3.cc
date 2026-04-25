@@ -87,18 +87,31 @@ private:
             ESP_ERROR_CHECK(i2c_master_transmit(pm1, buf, 2, 100));
         };
 
-        // 1) 打开 5V boost (reg 0x06 bit3) —— 给 AW8737 + LCD 电源链路供 5V
+        // 关键！关掉 PMIC 的 I2C idle sleep（reg 0x09），否则 PMIC 会进睡眠不响应
+        // 参考 M5GFX::M5GFX.cpp::Autodetect_StickS3
+        write_reg(0x09, 0x00);
+        ESP_LOGI(TAG, "M5PM1 reg 0x09 I2C idle sleep disabled");
+
+        // 1) PM1 GPIO2 → L3B Enable，**点亮 LCD 电源**（之前漏了这个，所以屏幕一直黑）
+        write_reg(0x16, read_reg(0x16) & ~(1 << 2));  // GPIO2 为 GPIO 功能
+        write_reg(0x10, read_reg(0x10) |  (1 << 2));  // GPIO2 设为输出
+        write_reg(0x13, read_reg(0x13) & ~(1 << 2));  // GPIO2 push-pull
+        write_reg(0x11, read_reg(0x11) |  (1 << 2));  // GPIO2 输出 HIGH → 打开 L3B 轨
+        ESP_LOGI(TAG, "M5PM1 GPIO2 (L3B/LCD power) ENABLED");
+
+        // 2) 打开 5V boost (reg 0x06 bit3) —— 给 AW8737 amp 输出供 5V
         uint8_t v06 = read_reg(0x06);
         write_reg(0x06, v06 | 0x08);
         ESP_LOGI(TAG, "M5PM1 reg 0x06 5V_OUT enabled: %02x -> %02x", v06, v06 | 0x08);
 
-        // 2) AW8737 (扬声器 amp) 使能引脚走 PM1 GPIO3：配 GPIO 功能 + 输出 + push-pull + 拉低（amp 低有效或常态）
-        // 顺序参考 M5Unified Power_Class.cpp::initialize 的 board_M5StickS3 分支
-        write_reg(0x16, read_reg(0x16) & ~(1 << 3));  // 0x16 bit3=0：GPIO3 走 GPIO 功能
-        write_reg(0x10, read_reg(0x10) |  (1 << 3));  // 0x10 bit3=1：GPIO3 设为输出
-        write_reg(0x13, read_reg(0x13) & ~(1 << 3));  // 0x13 bit3=0：push-pull
-        write_reg(0x11, read_reg(0x11) & ~(1 << 3));  // 0x11 bit3=0：先输出低（默认状态）
-        ESP_LOGI(TAG, "M5PM1 GPIO3 (AW8737 ctrl) configured");
+        // 3) PM1 GPIO3 → AW8737 (扬声器 amp) 使能脚
+        write_reg(0x16, read_reg(0x16) & ~(1 << 3));  // GPIO3 为 GPIO 功能
+        write_reg(0x10, read_reg(0x10) |  (1 << 3));  // GPIO3 设为输出
+        write_reg(0x13, read_reg(0x13) & ~(1 << 3));  // GPIO3 push-pull
+        write_reg(0x11, read_reg(0x11) & ~(1 << 3));  // GPIO3 先输出低（amp 关闭，等屏幕亮起再开）
+        ESP_LOGI(TAG, "M5PM1 GPIO3 (AW8737 ctrl) configured (amp off for now)");
+
+        vTaskDelay(pdMS_TO_TICKS(100));  // 等 LCD 电源稳定 + codec 唤醒
 
         // 留着 dev handle 备用，但先不删（后面如果要打开 amp 还要写 0x11 bit3=1）
         // i2c_master_bus_rm_device(pm1);
