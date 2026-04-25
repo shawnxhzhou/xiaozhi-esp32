@@ -7,8 +7,10 @@
 #include <driver/gpio.h>
 
 // ─── 音频：ES8311 codec + AW8737 放大器 + MEMS 麦 ───────────────────
+// ES8311 是单端 codec，输入输出共用一个采样率配置；必须相等
+// 16k 匹配服务端 ASR/TTS（DASHSCOPE 的 16k mono PCM）
 #define AUDIO_INPUT_SAMPLE_RATE  16000
-#define AUDIO_OUTPUT_SAMPLE_RATE 24000
+#define AUDIO_OUTPUT_SAMPLE_RATE 16000
 
 #define AUDIO_I2S_GPIO_MCLK  GPIO_NUM_18
 #define AUDIO_I2S_GPIO_BCLK  GPIO_NUM_14
