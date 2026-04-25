@@ -16,6 +16,7 @@
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
+#include <ssid_manager.h>
 
 #define TAG "M5StickS3"
 
@@ -92,6 +93,21 @@ private:
                                      DISPLAY_SWAP_XY);
     }
 
+    // 首次启动（NVS 里没有保存的 SSID）时种入预置的 WiFi 列表，
+    // WifiManager 会在所有保存的 SSID 中扫描连接最强信号的那个。
+    // 用户后续通过 AP 配网模式新加的 SSID 会和这些一起留在 NVS 里。
+    void SeedHardcodedSsids() {
+        auto& mgr = SsidManager::GetInstance();
+        if (!mgr.GetSsidList().empty()) {
+            ESP_LOGI(TAG, "NVS already has %zu SSIDs, skip seeding", mgr.GetSsidList().size());
+            return;
+        }
+        ESP_LOGI(TAG, "First boot: seeding hardcoded WiFi list");
+        mgr.AddSsid("SHAWN", "SS03010301");
+        mgr.AddSsid("iPhone Air Shawn", "12345667");
+        mgr.AddSsid("WiFi", "12345678");
+    }
+
     void InitializeButtons() {
         // KEY1 (G11)：短按切对话状态；启动时长按进 wifi 配网
         boot_button_.OnClick([this]() {
@@ -122,6 +138,7 @@ public:
         InitializeSpi();
         InitializeSt7789Display();
         InitializeButtons();
+        SeedHardcodedSsids();
         GetBacklight()->RestoreBrightness();
     }
 
