@@ -42,6 +42,8 @@ jobs:
           CONFIG_USE_ESP_WAKE_WORD=n
           CONFIG_USE_CUSTOM_WAKE_WORD=n
           CONFIG_WAKE_WORD_DISABLED=y
+          # 多行文字（替代单行跑马灯），充分利用 135×240 portrait 屏
+          CONFIG_USE_MULTILINE_CHAT_MESSAGE=y
           EOF
           cat sdkconfig.defaults.m5stick
 

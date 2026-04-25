@@ -558,6 +558,9 @@ elseif(CONFIG_BOARD_TYPE_M5_STICK_S3)
     set(BOARD_TYPE "m5-stick-s3")
     set(BUILTIN_TEXT_FONT font_puhui_basic_14_1)
     set(BUILTIN_ICON_FONT font_awesome_14_1)
+    # 64×64 真人脸 emoji（neutral/happy/laughing/sad/angry/surprised）
+    # 屏幕 135×240 portrait，64×64 占视觉中心位约 30% 高度，醒目
+    set(DEFAULT_EMOJI_COLLECTION twemoji_64)
 elseif(CONFIG_BOARD_TYPE_MOVECALL_MOJI_ESP32S3)
     set(BOARD_TYPE "movecall-moji-esp32s3")
     set(BUILTIN_TEXT_FONT font_puhui_basic_20_4)
