@@ -37,6 +37,11 @@ jobs:
           CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
           CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/v2/8m.csv"
           CONFIG_OTA_URL="https://hiyb.pixcity.net/xiaozhi/ota/"
+          # 关掉唤醒词，纯按键模式：不会被环境噪音/兄妹聊天打断 TTS
+          CONFIG_USE_AFE_WAKE_WORD=n
+          CONFIG_USE_ESP_WAKE_WORD=n
+          CONFIG_USE_CUSTOM_WAKE_WORD=n
+          CONFIG_WAKE_WORD_DISABLED=y
           EOF
           cat sdkconfig.defaults.m5stick
 
