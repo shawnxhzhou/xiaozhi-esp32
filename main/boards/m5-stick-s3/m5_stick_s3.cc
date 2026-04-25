@@ -23,6 +23,7 @@
 class M5StickS3Board : public WifiBoard {
 private:
     i2c_master_bus_handle_t codec_i2c_bus_ = nullptr;
+    i2c_master_dev_handle_t pm1_handle_ = nullptr;
     esp_lcd_panel_io_handle_t panel_io_ = nullptr;
     esp_lcd_panel_handle_t panel_ = nullptr;
     Button boot_button_;
@@ -44,6 +45,56 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &codec_i2c_bus_));
+    }
+
+    // M5PM1（PY32L020F15U6 mcu）电源管理初始化。寄存器值参考 m5stack/M5Unified
+    // src/M5Unified.cpp::board_M5StickS3 case + Power_Class.cpp。
+    // 这一步不做的话：1) LCD 没电（屏幕黑） 2) AW8737 amp 没使能（扬声器不响）
+    void InitializeM5PM1() {
+        i2c_master_dev_handle_t pm1 = nullptr;
+        i2c_device_config_t dev_cfg = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = M5PM1_I2C_ADDR,
+            .scl_speed_hz = 100000,
+        };
+        ESP_ERROR_CHECK(i2c_master_bus_add_device(codec_i2c_bus_, &dev_cfg, &pm1));
+
+        // 读改写 reg 的小工具
+        auto read_reg = [&](uint8_t reg) -> uint8_t {
+            uint8_t v = 0;
+            ESP_ERROR_CHECK(i2c_master_transmit_receive(pm1, &reg, 1, &v, 1, 100));
+            return v;
+        };
+        auto write_reg = [&](uint8_t reg, uint8_t v) {
+            uint8_t buf[2] = {reg, v};
+            ESP_ERROR_CHECK(i2c_master_transmit(pm1, buf, 2, 100));
+        };
+
+        // 1) 打开 5V boost (reg 0x06 bit3) —— 给 AW8737 + LCD 电源链路供 5V
+        uint8_t v06 = read_reg(0x06);
+        write_reg(0x06, v06 | 0x08);
+        ESP_LOGI(TAG, "M5PM1 reg 0x06 5V_OUT enabled: %02x -> %02x", v06, v06 | 0x08);
+
+        // 2) AW8737 (扬声器 amp) 使能引脚走 PM1 GPIO3：配 GPIO 功能 + 输出 + push-pull + 拉低（amp 低有效或常态）
+        // 顺序参考 M5Unified Power_Class.cpp::initialize 的 board_M5StickS3 分支
+        write_reg(0x16, read_reg(0x16) & ~(1 << 3));  // 0x16 bit3=0：GPIO3 走 GPIO 功能
+        write_reg(0x10, read_reg(0x10) |  (1 << 3));  // 0x10 bit3=1：GPIO3 设为输出
+        write_reg(0x13, read_reg(0x13) & ~(1 << 3));  // 0x13 bit3=0：push-pull
+        write_reg(0x11, read_reg(0x11) & ~(1 << 3));  // 0x11 bit3=0：先输出低（默认状态）
+        ESP_LOGI(TAG, "M5PM1 GPIO3 (AW8737 ctrl) configured");
+
+        // 留着 dev handle 备用，但先不删（后面如果要打开 amp 还要写 0x11 bit3=1）
+        // i2c_master_bus_rm_device(pm1);
+        pm1_handle_ = pm1;
+    }
+
+    void M5PM1_SetAmpEnabled(bool on) {
+        if (pm1_handle_ == nullptr) return;
+        uint8_t reg = 0x11, v;
+        ESP_ERROR_CHECK(i2c_master_transmit_receive(pm1_handle_, &reg, 1, &v, 1, 100));
+        if (on) v |= (1 << 3); else v &= ~(1 << 3);
+        uint8_t buf[2] = {0x11, v};
+        ESP_ERROR_CHECK(i2c_master_transmit(pm1_handle_, buf, 2, 100));
     }
 
     void InitializeSpi() {
@@ -135,11 +186,13 @@ public:
         : boot_button_(BOOT_BUTTON_GPIO),
           volume_up_button_(VOLUME_UP_BUTTON_GPIO) {
         InitializeCodecI2c();
+        InitializeM5PM1();          // 必须在 LCD/Codec 之前：打开 5V，AW8737 amp 准备
         InitializeSpi();
         InitializeSt7789Display();
         InitializeButtons();
         SeedHardcodedSsids();
         GetBacklight()->RestoreBrightness();
+        M5PM1_SetAmpEnabled(true);  // 屏幕亮起来之后，把 amp 打开
     }
 
     virtual Led* GetLed() override {
