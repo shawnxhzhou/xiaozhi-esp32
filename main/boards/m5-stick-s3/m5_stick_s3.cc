@@ -11,6 +11,8 @@
 #include "led/single_led.h"
 
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <driver/i2c_master.h>
 #include <driver/spi_master.h>
 #include <esp_lcd_panel_io.h>
@@ -45,6 +47,21 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &codec_i2c_bus_));
+    }
+
+    // 调试：扫一下 I2C 总线看谁响应。0x18=ES8311, 0x6e=M5PM1, 0x68=BMI270 IMU
+    void ScanI2cBus() {
+        ESP_LOGI(TAG, "=== I2C scan on G%d/G%d ===",
+                 AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_I2C_SCL_PIN);
+        int found = 0;
+        for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+            esp_err_t r = i2c_master_probe(codec_i2c_bus_, addr, 50);
+            if (r == ESP_OK) {
+                ESP_LOGI(TAG, "  found 0x%02x", addr);
+                found++;
+            }
+        }
+        ESP_LOGI(TAG, "=== %d devices ===", found);
     }
 
     // M5PM1（PY32L020F15U6 mcu）电源管理初始化。寄存器值参考 m5stack/M5Unified
@@ -186,7 +203,10 @@ public:
         : boot_button_(BOOT_BUTTON_GPIO),
           volume_up_button_(VOLUME_UP_BUTTON_GPIO) {
         InitializeCodecI2c();
+        ScanI2cBus();               // 诊断：先扫一下总线
         InitializeM5PM1();          // 必须在 LCD/Codec 之前：打开 5V，AW8737 amp 准备
+        vTaskDelay(pdMS_TO_TICKS(200));  // 等电源稳定
+        ScanI2cBus();               // 再扫一次：看 PM1 init 后多了谁
         InitializeSpi();
         InitializeSt7789Display();
         InitializeButtons();
