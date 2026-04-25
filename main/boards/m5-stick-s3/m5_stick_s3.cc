@@ -127,6 +127,19 @@ private:
         ESP_ERROR_CHECK(i2c_master_transmit(pm1_handle_, buf, 2, 100));
     }
 
+    // 让 M5PM1 切断主电源。参考 m5stack/M5Unified Power_Class.cpp::pmic_m5pm1 分支
+    // reg 0x0C: bits 1:0 = 01 时关机，配合命令 key 0xA0
+    void M5PM1_PowerOff() {
+        if (pm1_handle_ == nullptr) return;
+        uint8_t reg = 0x0C, v = 0;
+        if (i2c_master_transmit_receive(pm1_handle_, &reg, 1, &v, 1, 100) != ESP_OK) return;
+        v = (v & ~0x03) | 0xA1;  // 清掉低 2 位，写命令 key + power off
+        uint8_t buf[2] = {0x0C, v};
+        i2c_master_transmit(pm1_handle_, buf, 2, 100);
+        // PMIC 几十 ms 内会切电源；这里 hang 住不返回
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+
     void InitializeSpi() {
         spi_bus_config_t buscfg = {};
         buscfg.mosi_io_num = DISPLAY_SPI_MOSI_PIN;
@@ -190,7 +203,7 @@ private:
     }
 
     void InitializeButtons() {
-        // KEY1 (G11)：短按切对话状态；启动时长按进 wifi 配网
+        // KEY1 (G11) 短按：切换对话状态；启动时若长按进 wifi 配网
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
@@ -198,6 +211,13 @@ private:
                 return;
             }
             app.ToggleChatState();
+        });
+        // KEY1 长按 2 秒 → 关机（先在屏上显示"再见"，再切 PMIC 电源）
+        boot_button_.OnLongPress([this]() {
+            if (auto d = GetDisplay()) d->ShowNotification("拜拜啦~", 1500);
+            vTaskDelay(pdMS_TO_TICKS(1200));  // 让用户看到提示
+            ESP_LOGI(TAG, "Power off via M5PM1");
+            M5PM1_PowerOff();
         });
 
         // KEY2 (G12)：单击循环 5 档音量（30→50→70→85→100→30...）
