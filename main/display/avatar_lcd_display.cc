@@ -34,24 +34,67 @@ void AvatarLcdDisplay::SetupUI() {
     SpiLcdDisplay::SetupUI();  // 让父类先把 status_bar_/notification_label_ 等建好
 
     DisplayLockGuard lock(this);
+    lv_obj_t* screen = lv_screen_active();
 
-    // 把头像挂在活动屏幕的最顶层；初始隐藏，状态进入 STANDBY/LISTENING/SPEAKING 才显示
-    avatar_img_ = lv_image_create(lv_screen_active());
+    // 头像：全屏铺底
+    avatar_img_ = lv_image_create(screen);
     lv_image_set_src(avatar_img_, &avatar_close);
     lv_obj_set_pos(avatar_img_, 0, 0);
     lv_obj_set_size(avatar_img_, LV_HOR_RES, LV_VER_RES);
     lv_obj_add_flag(avatar_img_, LV_OBJ_FLAG_HIDDEN);
 
-    ESP_LOGI(TAG, "avatar overlay created (%d x %d)", LV_HOR_RES, LV_VER_RES);
+    // 底部状态/字幕条：半透明黑底，盖在头像上层但不遮嘴部（嘴在 0.65–0.72，条在底部 56px）
+    constexpr int STRIP_H = 56;
+    bottom_strip_ = lv_obj_create(screen);
+    lv_obj_set_size(bottom_strip_, LV_HOR_RES, STRIP_H);
+    lv_obj_align(bottom_strip_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(bottom_strip_, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(bottom_strip_, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(bottom_strip_, 0, 0);
+    lv_obj_set_style_radius(bottom_strip_, 0, 0);
+    lv_obj_set_style_pad_all(bottom_strip_, 3, 0);
+    lv_obj_remove_flag(bottom_strip_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(bottom_strip_, LV_OBJ_FLAG_HIDDEN);
+
+    avatar_status_label_ = lv_label_create(bottom_strip_);
+    lv_obj_set_style_text_color(avatar_status_label_, lv_color_white(), 0);
+    lv_obj_align(avatar_status_label_, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_label_set_text(avatar_status_label_, "");
+
+    avatar_chat_label_ = lv_label_create(bottom_strip_);
+    lv_obj_set_style_text_color(avatar_chat_label_, lv_color_white(), 0);
+    lv_label_set_long_mode(avatar_chat_label_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(avatar_chat_label_, LV_HOR_RES - 6);
+    lv_obj_align(avatar_chat_label_, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_label_set_text(avatar_chat_label_, "");
+
+    ESP_LOGI(TAG, "avatar overlay created (%d x %d) + bottom strip %dpx",
+             LV_HOR_RES, LV_VER_RES, STRIP_H);
+}
+
+void AvatarLcdDisplay::SetChatMessage(const char* role, const char* content) {
+    SpiLcdDisplay::SetChatMessage(role, content);
+    if (content == nullptr) return;
+    DisplayLockGuard lock(this);
+    if (avatar_chat_label_ != nullptr) {
+        lv_label_set_text(avatar_chat_label_, content);
+    }
 }
 
 void AvatarLcdDisplay::ShowAvatar(bool show) {
     if (avatar_img_ == nullptr) return;
     if (show) {
-        lv_obj_clear_flag(avatar_img_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(avatar_img_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(avatar_img_);
+        if (bottom_strip_ != nullptr) {
+            lv_obj_remove_flag(bottom_strip_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(bottom_strip_);  // 字幕条压在头像之上
+        }
     } else {
         lv_obj_add_flag(avatar_img_, LV_OBJ_FLAG_HIDDEN);
+        if (bottom_strip_ != nullptr) {
+            lv_obj_add_flag(bottom_strip_, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -67,6 +110,9 @@ void AvatarLcdDisplay::SetStatus(const char* status) {
     DisplayLockGuard lock(this);
     if (is_idle || is_listening || is_speaking) {
         ShowAvatar(true);
+        if (avatar_status_label_ != nullptr) {
+            lv_label_set_text(avatar_status_label_, status);
+        }
     } else {
         ShowAvatar(false);  // 配网/OTA/激活等场景露出底层 UI
     }
