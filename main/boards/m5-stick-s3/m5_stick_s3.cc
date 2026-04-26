@@ -289,6 +289,34 @@ public:
         return &backlight;
     }
 
+    // 从 M5PM1 (PY32L020) 读电池电压 + 充电状态。
+    // 寄存器映射来自 m5stack/M5Unified::Power_Class.cpp board_M5StickS3 分支：
+    //   reg 0x22(BAT_L) / 0x23(BAT_H)：电池电压 mV，2 字节小端
+    //   reg 0x12 bit0：1=放电 / 0=充电
+    virtual bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
+        if (pm1_handle_ == nullptr) return false;
+
+        uint8_t reg = 0x22;
+        uint8_t buf[2] = {0, 0};
+        if (i2c_master_transmit_receive(pm1_handle_, &reg, 1, buf, 2, 100) != ESP_OK) {
+            return false;
+        }
+        int mv = buf[0] | (buf[1] << 8);
+        if (mv < 1000 || mv > 6000) return false;  // 异常读数过滤
+
+        // 3300 mV = 0%，4150 mV = 100%（M5Unified 的口径）
+        int l = (mv - 3300) * 100 / (4150 - 3300);
+        level = (l < 0) ? 0 : (l > 100) ? 100 : l;
+
+        uint8_t st = 0x01;  // 默认认为放电
+        reg = 0x12;
+        i2c_master_transmit_receive(pm1_handle_, &reg, 1, &st, 1, 100);
+        const bool dis = (st & 0x01) != 0;
+        discharging = dis;
+        charging = !dis;
+        return true;
+    }
+
     virtual AudioCodec* GetAudioCodec() override {
         static Es8311AudioCodec audio_codec(
             codec_i2c_bus_, I2C_NUM_0,

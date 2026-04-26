@@ -19,12 +19,14 @@ public:
     void SetupUI() override;
     void SetStatus(const char* status) override;
     void SetChatMessage(const char* role, const char* content) override;
+    void UpdateStatusBar(bool update_all = false) override;
 
 private:
     lv_obj_t* avatar_img_ = nullptr;
     lv_obj_t* bottom_strip_ = nullptr;          // 底部半透明黑条
     lv_obj_t* avatar_status_label_ = nullptr;   // 显示 LISTENING/SPEAKING 等
     lv_obj_t* avatar_chat_label_ = nullptr;     // 显示对话内容（assistant 文本）
+    lv_obj_t* avatar_battery_label_ = nullptr;  // 右上角电量
     lv_timer_t* flap_timer_ = nullptr;
     lv_timer_t* delay_timer_ = nullptr;  // SPEAKING 进入后等 2 秒再开始 flap
     bool showing_open_ = false;

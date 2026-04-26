@@ -1,7 +1,9 @@
 #include "avatar_lcd_display.h"
 #include "assets/lang_config.h"
+#include "board.h"
 
 #include <esp_log.h>
+#include <cstdio>
 #include <cstring>
 
 extern "C" {
@@ -68,8 +70,38 @@ void AvatarLcdDisplay::SetupUI() {
     lv_obj_align(avatar_chat_label_, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_label_set_text(avatar_chat_label_, "");
 
+    // 右上角电量小标签：白字、半透明黑底，圆角小药丸
+    avatar_battery_label_ = lv_label_create(screen);
+    lv_obj_set_style_text_color(avatar_battery_label_, lv_color_white(), 0);
+    lv_obj_set_style_bg_color(avatar_battery_label_, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(avatar_battery_label_, LV_OPA_60, 0);
+    lv_obj_set_style_pad_hor(avatar_battery_label_, 4, 0);
+    lv_obj_set_style_pad_ver(avatar_battery_label_, 1, 0);
+    lv_obj_set_style_radius(avatar_battery_label_, 6, 0);
+    lv_obj_align(avatar_battery_label_, LV_ALIGN_TOP_RIGHT, -3, 3);
+    lv_label_set_text(avatar_battery_label_, "");
+    lv_obj_add_flag(avatar_battery_label_, LV_OBJ_FLAG_HIDDEN);
+
     ESP_LOGI(TAG, "avatar overlay created (%d x %d) + bottom strip %dpx",
              LV_HOR_RES, LV_VER_RES, STRIP_H);
+}
+
+void AvatarLcdDisplay::UpdateStatusBar(bool update_all) {
+    SpiLcdDisplay::UpdateStatusBar(update_all);
+
+    int level = -1;
+    bool charging = false, discharging = false;
+    if (!Board::GetInstance().GetBatteryLevel(level, charging, discharging)) {
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+    if (avatar_battery_label_ == nullptr) return;
+    char buf[16];
+    // 充电时前面加 "+"，明显区分
+    if (charging) snprintf(buf, sizeof(buf), "+%d%%", level);
+    else          snprintf(buf, sizeof(buf), "%d%%", level);
+    lv_label_set_text(avatar_battery_label_, buf);
 }
 
 void AvatarLcdDisplay::SetChatMessage(const char* role, const char* content) {
@@ -90,10 +122,17 @@ void AvatarLcdDisplay::ShowAvatar(bool show) {
             lv_obj_remove_flag(bottom_strip_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground(bottom_strip_);  // 字幕条压在头像之上
         }
+        if (avatar_battery_label_ != nullptr) {
+            lv_obj_remove_flag(avatar_battery_label_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(avatar_battery_label_);
+        }
     } else {
         lv_obj_add_flag(avatar_img_, LV_OBJ_FLAG_HIDDEN);
         if (bottom_strip_ != nullptr) {
             lv_obj_add_flag(bottom_strip_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (avatar_battery_label_ != nullptr) {
+            lv_obj_add_flag(avatar_battery_label_, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
