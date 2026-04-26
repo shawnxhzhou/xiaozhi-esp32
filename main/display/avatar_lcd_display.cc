@@ -1,6 +1,7 @@
 #include "avatar_lcd_display.h"
 #include "assets/lang_config.h"
 #include "board.h"
+#include "backlight.h"
 
 #include <esp_log.h>
 #include <cstdio>
@@ -18,6 +19,9 @@ constexpr uint32_t SPEAK_DELAY_MS = 2000;
 // 张/闭嘴切换平均周期；运行时再叠 ±60ms 抖动让节奏更自然
 constexpr uint32_t FLAP_PERIOD_MS = 300;
 constexpr uint32_t FLAP_JITTER_MS = 60;
+// 省电：待机暗、对话亮（PwmBacklight 0–100）
+constexpr uint8_t  BRIGHTNESS_IDLE   = 35;
+constexpr uint8_t  BRIGHTNESS_ACTIVE = 85;
 }
 
 AvatarLcdDisplay::AvatarLcdDisplay(esp_lcd_panel_io_handle_t panel_io,
@@ -154,6 +158,13 @@ void AvatarLcdDisplay::SetStatus(const char* status) {
         }
     } else {
         ShowAvatar(false);  // 配网/OTA/激活等场景露出底层 UI
+    }
+
+    // 省电：聊天中屏幕拉亮，待机调暗
+    auto* bl = Board::GetInstance().GetBacklight();
+    if (bl != nullptr) {
+        if (is_listening || is_speaking) bl->SetBrightness(BRIGHTNESS_ACTIVE);
+        else if (is_idle)                bl->SetBrightness(BRIGHTNESS_IDLE);
     }
 
     if (is_speaking) ScheduleFlap();
