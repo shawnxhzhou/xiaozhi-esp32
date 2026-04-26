@@ -11,7 +11,11 @@ extern "C" {
 
 namespace {
 constexpr const char* TAG = "AvatarDisplay";
-constexpr uint32_t FLAP_PERIOD_MS = 140;  // 张闭嘴切换间隔
+// 进入 SPEAKING 后等多久才开始动嘴：避开 TTS 首包前的静默/连接延迟
+constexpr uint32_t SPEAK_DELAY_MS = 2000;
+// 张/闭嘴切换平均周期；运行时再叠 ±60ms 抖动让节奏更自然
+constexpr uint32_t FLAP_PERIOD_MS = 300;
+constexpr uint32_t FLAP_JITTER_MS = 60;
 }
 
 AvatarLcdDisplay::AvatarLcdDisplay(esp_lcd_panel_io_handle_t panel_io,
@@ -67,8 +71,23 @@ void AvatarLcdDisplay::SetStatus(const char* status) {
         ShowAvatar(false);  // 配网/OTA/激活等场景露出底层 UI
     }
 
-    if (is_speaking) StartFlap();
+    if (is_speaking) ScheduleFlap();
     else             StopFlap();
+}
+
+void AvatarLcdDisplay::ScheduleFlap() {
+    // 已经在 flap 或已经在等了：不动
+    if (flap_timer_ != nullptr || delay_timer_ != nullptr) return;
+    delay_timer_ = lv_timer_create(&AvatarLcdDisplay::DelayDoneCb, SPEAK_DELAY_MS, this);
+    lv_timer_set_repeat_count(delay_timer_, 1);  // one-shot
+    ESP_LOGI(TAG, "speaking; flap in %u ms", (unsigned)SPEAK_DELAY_MS);
+}
+
+void AvatarLcdDisplay::DelayDoneCb(lv_timer_t* t) {
+    auto self = static_cast<AvatarLcdDisplay*>(lv_timer_get_user_data(t));
+    if (!self) return;
+    self->delay_timer_ = nullptr;  // LVGL 会自动 free 一次性 timer
+    self->StartFlap();
 }
 
 void AvatarLcdDisplay::StartFlap() {
@@ -79,6 +98,10 @@ void AvatarLcdDisplay::StartFlap() {
 }
 
 void AvatarLcdDisplay::StopFlap() {
+    if (delay_timer_ != nullptr) {
+        lv_timer_del(delay_timer_);
+        delay_timer_ = nullptr;
+    }
     if (flap_timer_ != nullptr) {
         lv_timer_del(flap_timer_);
         flap_timer_ = nullptr;
@@ -96,7 +119,8 @@ void AvatarLcdDisplay::FlapTickCb(lv_timer_t* t) {
     self->showing_open_ = !self->showing_open_;
     lv_image_set_src(self->avatar_img_,
                      self->showing_open_ ? &avatar_open : &avatar_close);
-    // 80–200ms 抖动一下让节奏更像说话
-    uint32_t jitter = 80 + (esp_log_timestamp() % 120);
-    lv_timer_set_period(t, jitter);
+    // FLAP_PERIOD_MS ± FLAP_JITTER_MS：节奏抖一抖更自然
+    uint32_t jitter = (esp_log_timestamp() % (FLAP_JITTER_MS * 2));
+    uint32_t base = FLAP_PERIOD_MS - FLAP_JITTER_MS;
+    lv_timer_set_period(t, base + jitter);
 }

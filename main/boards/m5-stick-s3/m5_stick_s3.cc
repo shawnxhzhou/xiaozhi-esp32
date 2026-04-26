@@ -204,14 +204,23 @@ private:
     }
 
     void InitializeButtons() {
-        // KEY1 (G11) 短按：切换对话状态；启动时若长按进 wifi 配网
+        // KEY1 (G11) 短按：交互流程
+        //   idle      → 起 listening
+        //   listening → 结束并发送音频，等服务端回复（不关 channel）
+        //   speaking  → 截断当前回复，回到 listening
+        // 启动阶段长按进 wifi 配网模式（这里走 OnClick 也兼容）
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
-            if (app.GetDeviceState() == kDeviceStateStarting) {
+            auto state = app.GetDeviceState();
+            if (state == kDeviceStateStarting) {
                 EnterWifiConfigMode();
                 return;
             }
-            app.ToggleChatState();
+            if (state == kDeviceStateListening) {
+                app.StopListening();      // SendStopListening + 等服务端 → speaking
+            } else {
+                app.ToggleChatState();    // idle→listen / speaking→abort→listen
+            }
         });
         // KEY1 长按 2 秒 → 关机（先在屏上显示"再见"，再切 PMIC 电源）
         boot_button_.OnLongPress([this]() {

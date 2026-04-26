@@ -22,12 +22,15 @@ public:
 private:
     lv_obj_t* avatar_img_ = nullptr;
     lv_timer_t* flap_timer_ = nullptr;
+    lv_timer_t* delay_timer_ = nullptr;  // SPEAKING 进入后等 2 秒再开始 flap
     bool showing_open_ = false;
 
     void ShowAvatar(bool show);
+    void ScheduleFlap();   // 启动 2s 延时后 StartFlap
     void StartFlap();
     void StopFlap();
     static void FlapTickCb(lv_timer_t* t);
+    static void DelayDoneCb(lv_timer_t* t);
 };
 
 #endif  // AVATAR_LCD_DISPLAY_H
