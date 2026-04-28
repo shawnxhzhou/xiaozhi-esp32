@@ -55,24 +55,38 @@ def emit_dsc(name: str, data_name: str) -> str:
     )
 
 
-def make_closed(src: Image.Image, crop: tuple[int, int, int, int]) -> Image.Image:
+def make_open(src: Image.Image, crop: tuple[int, int, int, int]) -> Image.Image:
+    """原图当 open 帧——本来就在笑、露牙齿，自然就是张嘴态。"""
     cx, cy, cw, ch = crop
     cropped = src.crop((cx, cy, cx + cw, cy + ch))
     return cropped.resize((W, H), Image.LANCZOS).convert("RGB")
 
 
-def make_open(closed: Image.Image, mouth: tuple[int, int, int, int]) -> Image.Image:
-    """在 closed 上叠一个深色椭圆模拟张嘴。其它像素一字不动 → 不跳帧。"""
+def make_closed(opened: Image.Image, mouth: tuple[int, int, int, int]) -> Image.Image:
+    """闭嘴：从下巴采肉色把嘴里黑缝盖掉，再画一条深粉唇线。
+
+    其它像素和 open 完全一致 → 切帧不跳。
+    """
     mx, my, mw, mh = mouth
-    out = closed.copy()
+    out = opened.copy()
+    px = out.load()
+
+    # 采下巴肉色：嘴下方 12px 取 5×5 平均，避开嘴和阴影
+    sx, sy = mx, my + 12
+    rs, gs, bs, n = 0, 0, 0, 0
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            r, g, b = px[sx + dx, sy + dy]
+            rs += r; gs += g; bs += b; n += 1
+    skin = (rs // n, gs // n, bs // n)
+
     draw = ImageDraw.Draw(out)
-    # 外圈深棕（嘴唇内沿阴影），内圈接近黑色（口腔）
+    # 先用肉色填整个嘴部椭圆——把里面的黑缝抹掉
     draw.ellipse((mx - mw // 2, my - mh // 2, mx + mw // 2, my + mh // 2),
-                 fill=(40, 18, 18))
-    inner_w, inner_h = max(2, mw - 4), max(1, mh - 2)
-    draw.ellipse((mx - inner_w // 2, my - inner_h // 2,
-                  mx + inner_w // 2, my + inner_h // 2),
-                 fill=(15, 5, 5))
+                 fill=skin)
+    # 再画一条略带粉/暗的唇线，1px 高 → 闭着嘴的笑意
+    lip = (max(0, skin[0] - 35), max(0, skin[1] - 60), max(0, skin[2] - 50))
+    draw.line((mx - mw // 2 + 1, my, mx + mw // 2 - 1, my), fill=lip, width=1)
     return out
 
 
@@ -96,8 +110,8 @@ def main() -> None:
     crop = (args.crop_x, args.crop_y, args.crop_w, args.crop_h)
     mouth = (args.mouth_x, args.mouth_y, args.mouth_w, args.mouth_h)
 
-    closed = make_closed(src, crop)
-    opened = make_open(closed, mouth)
+    opened = make_open(src, crop)
+    closed = make_closed(opened, mouth)
 
     if args.preview:
         prev = Path("build/avatar_preview")
