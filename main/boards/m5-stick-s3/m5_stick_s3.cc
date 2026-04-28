@@ -201,6 +201,7 @@ private:
         mgr.AddSsid("SHAWN", "SS03010301");
         mgr.AddSsid("iPhone Air Shawn", "12345667");
         mgr.AddSsid("WiFi", "12345678");
+        mgr.AddSsid("AlphaESS", "AlphaESS123");
     }
 
     void InitializeButtons() {
